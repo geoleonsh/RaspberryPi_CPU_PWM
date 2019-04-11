@@ -4,14 +4,15 @@
 #设置运行状态文件
 LOG=/var/log/cpu-fan/cpu-fan.log
 RUN=/var/run/cpu-fan.run
+
 touch $RUN
 chmod 777 $RUN
 #设置风扇默认运行模式，0为关闭，1为全速，2为自动，运行过程中可以直接修改/var/run/cpu-fan.run文件来生效
 echo "2" > $RUN
 #设置开启风扇的最低温度
-set_temp_min=35000
-#设置关闭风扇温度比最低温度小1度
-shutdown_temp=`expr $set_temp_min - 1000`
+set_temp_min=55000
+#设置关闭风扇温度比最低温度小5度
+shutdown_temp=`expr $set_temp_min - 5000`
 #设置风扇全速运行的温度
 set_temp_max=70000
 
@@ -28,6 +29,7 @@ while true
   do
   #获取cpu温度
   tmp=`cat /sys/class/thermal/thermal_zone0/temp`
+  load=`cat /proc/loadavg | awk '{print $1}'`
   MODE=`cat $RUN`
   
   #计算pwm值，从变量set_temp_min设置的温度开始开启风扇，最低转速50%
@@ -45,7 +47,7 @@ while true
   if [ $tmp -gt $set_temp_min ] && [ $fan -eq 0 ]  && [ $MODE -eq 2 ] ;then
   gpio pwm 1 1023
   fan=1
-  echo "`date` temp=$tmp pwm=1023 MODE=$MODE CPU idle=`top -n 1|grep Cpu|awk '{print $8}'`% 第一次超过设置温度全速开启风扇" >> $LOG
+  echo "`date` temp=$tmp pwm=1023 MODE=$MODE CPU load=$load 第一次超过设置温度全速开启风扇" >> $LOG
   sleep 1
   fi
   
@@ -60,7 +62,7 @@ if [ $fan -eq 0 ] ;then
   gpio mode 1 pwm
   gpio pwm 1 $pwm
   sleep 5
-  echo "`date` temp=$tmp pwm=$pwm MODE=$MODE CPU idle=`top -n 1|grep Cpu|awk '{print $8}'`% 小于设置温度关闭风扇 " >> $LOG
+  echo "`date` temp=$tmp pwm=$pwm MODE=$MODE CPU load=$load 小于设置温度关闭风扇 " >> $LOG
 else
   
   #检查MODE，为0时关闭风扇
@@ -80,8 +82,11 @@ else
   gpio pwm 1 $pwm
   
   #输出日志
-  echo "`date` temp=$tmp  pwm=$pwm MODE=$MODE CPU idle=`top -n 1|grep Cpu|awk '{print $8}'`%" >> $LOG
-
+if [ $pwm -eq 0 ] ;then
+  echo "`date` temp=$tmp pwm=$pwm MODE=$MODE CPU load=$load 小于设置温度关闭风扇 " >> $LOG
+else
+  echo "`date` temp=$tmp pwm=$pwm MODE=$MODE CPU load=$load 大于设置温度持续开启风扇" >> $LOG
+fi
   #每5秒钟检查一次温度
   sleep 5
 fi
